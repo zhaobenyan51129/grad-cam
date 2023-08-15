@@ -31,10 +31,17 @@ class ReshapeTransform:
 
 
 def main():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type == "cuda":
+        use_cuda = True
+    else:
+        use_cuda = False
+    print(f"use_cuda={use_cuda}")
+
     model = vit_base_patch16_224()
     # 链接: https://pan.baidu.com/s/1zqb08naP0RPqqfSXfkB2EA  密码: eu9f
     weights_path = "./vit_base_patch16_224.pth"
-    model.load_state_dict(torch.load(weights_path, map_location="cpu"))
+    model.load_state_dict(torch.load(weights_path, map_location="cuda"))
     # Since the final classification is done on the class token computed in the last attention block,
     # the output will not be affected by the 14x14 channels in the last layer.
     # The gradient of the output with respect to them, will be 0!
@@ -44,7 +51,7 @@ def main():
     data_transform = transforms.Compose([transforms.ToTensor(),
                                          transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
     # load image
-    img_path = "/home/zhaobenyan/grad_cam/both.png"
+    img_path = "/root/grad-cam/data/pictures/both.png"
     assert os.path.exists(img_path), "file: '{}' dose not exist.".format(img_path)
     img = Image.open(img_path).convert('RGB')
     img = np.array(img, dtype=np.uint8)
@@ -57,19 +64,18 @@ def main():
 
     cam = GradCAM(model=model,
                   target_layers=target_layers,
-                  use_cuda=False,
+                  use_cuda=True,
                   reshape_transform=ReshapeTransform(model))
-    #target_category = None  # tabby, tabby cat281
-    target_category = 281  # pug, pug-dog
+    target_category = 281  # tabby, tabby cat
+    # target_category = 254  # pug, pug-dog
 
     grayscale_cam = cam(input_tensor=input_tensor, target_category=target_category)
 
     grayscale_cam = grayscale_cam[0, :]
     visualization = show_cam_on_image(img / 255., grayscale_cam, use_rgb=True)
     plt.imshow(visualization)
-    plt.show()
-    plt.savefig('./pig4.jpg')
-    
+    # plt.show()
+    plt.savefig('./data/output/both_vit_tabby.png')
     plt.close()
 
 
