@@ -1,5 +1,9 @@
 import cv2
 import numpy as np
+import os
+import requests
+import json
+import torch
 
 
 class ActivationsAndGradients:
@@ -150,7 +154,9 @@ class GradCAM:
             target_category = target_category
 
         if target_category is None:
-            target_category = np.argmax(output.cpu().data.numpy(), axis=-1)
+            # target_category = np.argmax(output.cpu().data.numpy(), axis=-1)
+            predicted_classes, target_category = decode_predictions(output,1)
+            print(f"predicted_classes: {predicted_classes}")
             print(f"category id: {target_category}")
         else:
             assert (len(target_category) == input_tensor.size(0))
@@ -169,7 +175,7 @@ class GradCAM:
         # use all conv layers for example, all Batchnorm layers,
         # or something else.
         cam_per_layer = self.compute_cam_per_layer(input_tensor) #list,长度为layer个数，每个元素形状为[batch,1,224,224]
-        return self.aggregate_multi_layers(cam_per_layer)
+        return predicted_classes, self.aggregate_multi_layers(cam_per_layer)
 
     def __del__(self):
         self.activations_and_grads.release()
@@ -241,3 +247,38 @@ def center_crop_img(img: np.ndarray, size: int):
         img = img[:, w: w+size]
 
     return img
+
+def decode_predictions(preds, top=1):
+    """Decode the prediction of an ImageNet model
+
+    # Arguments
+        preds: torch tensor encoding a batch of predictions.
+        top: Integer, how many top-guesses to return
+
+    # Return
+        lists of top class prediction classes and id
+    """
+
+    class_index_path = 'https://s3.amazonaws.com\
+    /deep-learning-models/image-models/imagenet_class_index.json'
+
+    class_index_dict = None
+
+    if len(preds.shape) != 2 or preds.shape[1] != 1000:
+        raise ValueError('`decode_predictions` expects a batch of predciton'
+        '(i.e. a 2D array of shape (samples, 1000)).'
+        'Found array with shape: ' + str(preds.shape)
+        )
+
+    if not os.path.exists('./data/classes/imagenet_class_index.json'):
+        r = requests.get(class_index_path).content
+        with open('./data/classes/imagenet_class_index.json', 'w+') as f:
+            f.write(r.content)
+    with open('./data/classes/imagenet_class_index.json') as f:
+        class_index_dict = json.load(f)
+
+    top_value, top_indices = torch.topk(preds, top)
+    predicted_classes = [class_index_dict[str(i.item())][1] for i in top_indices]
+    predicted_id = [j.item() for j in top_indices]
+   
+    return predicted_classes, predicted_id
