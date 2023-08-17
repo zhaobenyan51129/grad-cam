@@ -83,13 +83,7 @@ class GradCAM:
         for i in range(len(target_category)):
             loss = loss + output[i, target_category[i]]
         return loss
-    # def get_loss(output, target_category):
-    #     loss = []
-    #     for i in range(len(target_category)):
-    #         loss.append(output[i, target_category[i]])
-    #     return loss
-   
-
+    
     def get_cam_image(self, activations, grads):
         weights = self.get_cam_weights(grads) # weights=目标layer的grad maps求平均[batch,channels,1,1]
         weighted_activations = weights * activations
@@ -192,8 +186,8 @@ class GradCAM:
             return True
 
 
-def show_cam_on_image(img: np.ndarray, # [224,224,3]
-                      mask: np.ndarray, # [224,224]
+def show_cam_on_image(img: np.ndarray, # [batch,224,224,3]
+                      mask: np.ndarray, # [batch,224,224]
                       use_rgb: bool = False,
                       colormap: int = cv2.COLORMAP_JET) -> np.ndarray:
     """ 
@@ -207,19 +201,25 @@ def show_cam_on_image(img: np.ndarray, # [224,224,3]
     :param colormap: The OpenCV colormap to be used.
     :returns: The default image with the cam overlay.
     """
-
-    heatmap = cv2.applyColorMap(np.uint8(255 * mask), colormap) # numpy [224,224,3]
-    if use_rgb:
-        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-    heatmap = np.float32(heatmap) / 255
+    # 逐张图像处理并应用颜色映射
+    heatmaps = []
+    for gray_image in mask:
+        heatmap = cv2.applyColorMap(np.uint8(255 * gray_image), colormap)
+        if use_rgb:
+            heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+        heatmap = np.float32(heatmap) / 255
+        heatmaps.append(heatmap)
+    heatmap_np = np.stack(heatmaps)
 
     if np.max(img) > 1:
         raise Exception(
             "The input image should np.float32 in the range [0, 1]")
 
-    cam = heatmap + img
+    cam = heatmap_np + img
+
+    # heatmap_np = heatmap_np / np.max(heatmap_np, axis=(1, 2), keepdims=True)
     cam = cam / np.max(cam)
-    return np.uint8(255 * cam)
+    return np.uint8(255 * cam), np.uint8(255 * heatmap_np)
 
 
 def center_crop_img(img: np.ndarray, size: int):
